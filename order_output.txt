@@ -1,0 +1,3 @@
+TRADE | AAPL | Price: 150.0000 | Qty: 5 | BuyOrderId: 1 | SellOrderId: 5
+TRADE | AAPL | Price: 150.0000 | Qty: 5 | BuyOrderId: 1 | SellOrderId: 6
+TRADE | AAPL | Price: 149.0000 | Qty: 1 | BuyOrderId: 3 | SellOrderId: 6
