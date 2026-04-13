@@ -1,0 +1,267 @@
+#include "OrderBook.h"
+
+#include <iostream>
+#include <iomanip>
+#include <fstream>
+#include <sstream>
+#include <stdexcept>
+#include <algorithm>
+
+//  Helpers
+
+std::string sideToStr(Side s) {
+    return s == Side::BUY ? "BUY" : "SELL";
+}
+
+
+//  Constructor
+
+OrderBook::OrderBook(std::ostream& tradeLog)
+    : tradeLog_(tradeLog) {}
+
+//  addOrder
+
+std::vector<Trade> OrderBook::addOrder(Order order) {
+    order.id        = nextId_++;
+    order.timestamp = sequence_++;
+
+    auto& book = books_[order.symbol];
+
+    // Register in index for cancel/modify support
+    orderIndex_[order.id] = {
+        order.symbol, order.side, order.price, true, order.quantity
+    };
+
+    if (order.side == Side::BUY) {
+        book.bids[order.price].push(order);
+    } else {
+        book.asks[order.price].push(order);
+    }
+
+    return matchOrders(order.symbol);
+}
+
+//  cancelOrder
+
+bool OrderBook::cancelOrder(uint64_t orderId) {
+    auto it = orderIndex_.find(orderId);
+    if (it == orderIndex_.end() || !it->second.active)
+        return false;
+
+    // Mark inactive – the order remains in the queue but will be skipped
+    // when it reaches the front during matching (lazy deletion).
+    it->second.active = false;
+    return true;
+}
+
+
+//  modifyOrder  (cancel + re-insert; loses time priority – by design)
+
+bool OrderBook::modifyOrder(uint64_t orderId, int newQty) {
+    auto it = orderIndex_.find(orderId);
+    if (it == orderIndex_.end() || !it->second.active || newQty <= 0)
+        return false;
+
+    auto& meta = it->second;
+
+    // Build replacement order
+    Order replacement;
+    replacement.symbol   = meta.symbol;
+    replacement.side     = meta.side;
+    replacement.price    = meta.price;
+    replacement.quantity = newQty;
+
+    cancelOrder(orderId);
+    addOrder(replacement);
+    return true;
+}
+
+
+//  matchOrders  – core matching engine
+
+std::vector<Trade> OrderBook::matchOrders(const std::string& symbol) {
+    std::vector<Trade> trades;
+    auto& book = books_[symbol];
+
+    while (!book.bids.empty() && !book.asks.empty()) {
+
+        // Skip cancelled orders at the front of the best bid level
+        while (!book.bids.empty()) {
+            auto& [bestBidPrice, bidQueue] = *book.bids.begin();
+            while (!bidQueue.empty()) {
+                auto& front = bidQueue.front();
+                auto  idx   = orderIndex_.find(front.id);
+                if (idx != orderIndex_.end() && !idx->second.active) {
+                    bidQueue.pop();
+                } else break;
+            }
+            if (bidQueue.empty()) book.bids.erase(book.bids.begin());
+            else break;
+        }
+
+        // Skip cancelled orders at the front of the best ask level
+        while (!book.asks.empty()) {
+            auto& [bestAskPrice, askQueue] = *book.asks.begin();
+            while (!askQueue.empty()) {
+                auto& front = askQueue.front();
+                auto  idx   = orderIndex_.find(front.id);
+                if (idx != orderIndex_.end() && !idx->second.active) {
+                    askQueue.pop();
+                } else break;
+            }
+            if (askQueue.empty()) book.asks.erase(book.asks.begin());
+            else break;
+        }
+
+        if (book.bids.empty() || book.asks.empty()) break;
+
+        auto& [bestBidPrice, bidQueue] = *book.bids.begin();
+        auto& [bestAskPrice, askQueue] = *book.asks.begin();
+
+        // No cross – done
+        if (bestBidPrice < bestAskPrice) break;
+
+        Order& bid = bidQueue.front();
+        Order& ask = askQueue.front();
+
+        // Trade executes at the resting (maker) order's price.
+        // The ask arrived first if its timestamp is lower; otherwise bid did.
+        double tradePrice = (ask.timestamp < bid.timestamp) ? ask.price : bid.price;
+
+        int matchedQty = std::min(bid.quantity, ask.quantity);
+
+        Trade t { symbol, tradePrice, matchedQty, bid.id, ask.id };
+        trades.push_back(t);
+        logTrade(t);
+
+        bid.quantity -= matchedQty;
+        ask.quantity -= matchedQty;
+
+        // Update index remaining quantities
+        if (orderIndex_.count(bid.id)) orderIndex_[bid.id].remainingQty = bid.quantity;
+        if (orderIndex_.count(ask.id)) orderIndex_[ask.id].remainingQty = ask.quantity;
+
+        if (bid.quantity == 0) {
+            if (orderIndex_.count(bid.id)) orderIndex_[bid.id].active = false;
+            bidQueue.pop();
+        }
+        if (ask.quantity == 0) {
+            if (orderIndex_.count(ask.id)) orderIndex_[ask.id].active = false;
+            askQueue.pop();
+        }
+
+        if (bidQueue.empty()) book.bids.erase(book.bids.begin());
+        if (askQueue.empty()) book.asks.erase(book.asks.begin());
+    }
+
+    return trades;
+}
+
+//  printBook
+
+void OrderBook::printBook(const std::string& symbol) const {
+    auto it = books_.find(symbol);
+
+    std::cout << "\n╔══════════════════════════════════════╗\n";
+    std::cout <<   "║     Order Book  [" << symbol;
+    std::cout << std::string(18 - symbol.size(), ' ') << "]  ║\n";
+    std::cout <<   "╠══════════════════════════════════════╣\n";
+
+    if (it == books_.end() || (it->second.bids.empty() && it->second.asks.empty())) {
+        std::cout << "║         (book is empty)              ║\n";
+        std::cout << "╚══════════════════════════════════════╝\n";
+        return;
+    }
+
+    const auto& book = it->second;
+
+    std::cout << "║  SELL side (asks)                    ║\n";
+    std::cout << "║  Price         Qty                   ║\n";
+    // Print asks from worst to best (highest to lowest) for visual clarity
+    std::vector<std::pair<double,int>> askLevels;
+    for (auto& [price, q] : book.asks) {
+        int total = 0;
+        std::queue<Order> tmp = q;
+        while (!tmp.empty()) { total += tmp.front().quantity; tmp.pop(); }
+        if (total > 0) askLevels.push_back({price, total});
+    }
+    for (auto rit = askLevels.rbegin(); rit != askLevels.rend(); ++rit) {
+        std::cout << "║  " << std::fixed << std::setprecision(2)
+                  << std::setw(10) << rit->first
+                  << "  " << std::setw(6) << rit->second
+                  << "                   ║\n";
+    }
+
+    std::cout << "║──────────────────────────────────────║\n";
+    std::cout << "║  BUY  side (bids)                    ║\n";
+    std::cout << "║  Price         Qty                   ║\n";
+    for (auto& [price, q] : book.bids) {
+        int total = 0;
+        std::queue<Order> tmp = q;
+        while (!tmp.empty()) { total += tmp.front().quantity; tmp.pop(); }
+        if (total > 0)
+            std::cout << "║  " << std::fixed << std::setprecision(2)
+                      << std::setw(10) << price
+                      << "  " << std::setw(6) << total
+                      << "                   ║\n";
+    }
+
+    std::cout << "╚══════════════════════════════════════╝\n";
+}
+
+//  bestBid / bestAsk
+
+double OrderBook::bestBid(const std::string& symbol) const {
+    auto it = books_.find(symbol);
+    if (it == books_.end() || it->second.bids.empty()) return 0.0;
+    return it->second.bids.begin()->first;
+}
+
+double OrderBook::bestAsk(const std::string& symbol) const {
+    auto it = books_.find(symbol);
+    if (it == books_.end() || it->second.asks.empty()) return 0.0;
+    return it->second.asks.begin()->first;
+}
+
+//  loadFromFile
+
+
+void OrderBook::loadFromFile(const std::string& filename,
+                             const std::string& symbol,
+                             Side side,
+                             int defaultQty) {
+    std::ifstream file(filename);
+    if (!file.is_open())
+        throw std::runtime_error("Cannot open file: " + filename);
+
+    std::string line;
+    int loaded = 0;
+    while (std::getline(file, line)) {
+        if (line.empty()) continue;
+        try {
+            double price = std::stod(line);
+            Order o;
+            o.symbol   = symbol;
+            o.side     = side;
+            o.price    = price;
+            o.quantity = defaultQty;
+            addOrder(o);
+            ++loaded;
+        } catch (...) {
+            // skip malformed lines
+        }
+    }
+    std::cout << "[INFO] Loaded " << loaded << " " << sideToStr(side)
+              << " orders for " << symbol << " from " << filename << "\n";
+}
+
+//  logTrade  – writes to the trade log stream
+
+void OrderBook::logTrade(const Trade& t) {
+    tradeLog_ << "TRADE | " << t.symbol
+              << " | Price: " << std::fixed << std::setprecision(4) << t.price
+              << " | Qty: " << t.quantity
+              << " | BuyOrderId: "  << t.buyOrderId
+              << " | SellOrderId: " << t.sellOrderId
+              << "\n";
+}
