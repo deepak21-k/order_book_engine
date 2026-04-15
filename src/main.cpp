@@ -74,4 +74,5 @@ int main(int argc, char* argv[]) {
     std::cout << "\n[INFO] Trade log written to order_output.txt\n";
     tradeFile.close();
     return 0;
+    
 }
