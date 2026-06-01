@@ -65,7 +65,7 @@ g++ -std=c++17 -O2 -Isrc src/OrderBook.cpp tests/test_orderbook.cpp -o run_tests
 ./order_book_engine
 
 # Run with your own order files (one price per line)
-./order_book_engine Data/buy_orders.txt Data/sell_orders.txt
+./order_book_engine data/buy_orders.txt data/sell_orders.txt
 ```
 
 ### Input format (`buy_orders.txt` / `sell_orders.txt`)
@@ -119,7 +119,7 @@ order_book_engine/
 │   └── main.cpp         # Entry point, file I/O, demo
 ├── tests/
 │   └── test_orderbook.cpp
-├── Data/
+├── data/
 │   ├── buy_orders.txt
 │   └── sell_orders.txt
 ├── CMakeLists.txt

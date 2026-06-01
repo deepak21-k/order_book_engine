@@ -25,7 +25,7 @@ target_include_directories(order_book_engine PRIVATE src)
 enable_testing()
 
 add_executable(run_tests
-    Tests/test_orderbook.cpp
+    tests/test_orderbook.cpp
     src/OrderBook.cpp
 )
 

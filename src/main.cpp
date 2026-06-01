@@ -56,8 +56,8 @@ int main(int argc, char* argv[]) {
 
         // Demonstrate modify
         std::cout << "\n── Modifying order id=3 (BUY @ 149.00) qty → 20 ──\n";
-        bool modified = ob.modifyOrder(3, 20);
-        std::cout << "  Modify result: " << (modified ? "OK" : "FAILED") << "\n";
+        uint64_t modifiedId = ob.modifyOrder(3, 20);
+        std::cout << "  Modify result: " << (modifiedId != 0 ? "OK (New ID: " + std::to_string(modifiedId) + ")" : "FAILED") << "\n";
     }
 
     // ── 2. Print final order book state 
