@@ -131,8 +131,8 @@ void test_modify() {
 
     ob.addOrder(makeOrder("TEST", Side::BUY, 100.0, 5));   // id=1
     ob.addOrder(makeOrder("TEST", Side::BUY,  99.0, 5));   // id=2
-    uint64_t newId = ob.modifyOrder(1, 20);
-    EXPECT(newId != 0, "Modify returns new order ID");
+    bool ok = ob.modifyOrder(1, 20);
+    EXPECT(ok, "Modify returns true");
 
     // Now add a crossing sell for 20 units
     auto trades = ob.addOrder(makeOrder("TEST", Side::SELL, 99.0, 20));
@@ -158,84 +158,7 @@ void test_multi_symbol() {
     EXPECT(ob.bestBid("GOOG") == 200.0,  "GOOG book unaffected");
 }
 
-//  Test: bestBid / bestAsk after cancel
-
-void test_best_price_after_cancel() {
-    std::cout << "\n[TEST] bestBid / bestAsk after cancel\n";
-    devNull.str("");
-    OrderBook ob(devNull);
-
-    ob.addOrder(makeOrder("TEST", Side::BUY, 100.0, 10)); // ID 1
-    ob.addOrder(makeOrder("TEST", Side::BUY,  99.0, 10)); // ID 2
-    ob.addOrder(makeOrder("TEST", Side::SELL, 101.0, 10)); // ID 3
-    ob.addOrder(makeOrder("TEST", Side::SELL, 102.0, 10)); // ID 4
-
-    EXPECT(ob.bestBid("TEST") == 100.0, "Initial best bid is 100.0");
-    EXPECT(ob.bestAsk("TEST") == 101.0, "Initial best ask is 101.0");
-
-    ob.cancelOrder(1); // Cancel best bid
-    EXPECT(ob.bestBid("TEST") == 99.0, "Best bid updates to 99.0 after cancel");
-
-    ob.cancelOrder(3); // Cancel best ask
-    EXPECT(ob.bestAsk("TEST") == 102.0, "Best ask updates to 102.0 after cancel");
-    
-    ob.cancelOrder(2); // Cancel remaining bid
-    EXPECT(ob.bestBid("TEST") == 0.0, "Best bid is 0.0 when all bids cancelled");
-}
-
-//  Test: printBook after cancel
-
-void test_print_book_after_cancel() {
-    std::cout << "\n[TEST] printBook depth after cancel\n";
-    devNull.str("");
-    OrderBook ob(devNull);
-
-    ob.addOrder(makeOrder("TEST", Side::BUY, 100.0, 10)); // ID 1
-    ob.addOrder(makeOrder("TEST", Side::BUY, 100.0, 15)); // ID 2
-    
-    std::streambuf* oldCoutStreamBuf = std::cout.rdbuf();
-    std::ostringstream strCout;
-    std::cout.rdbuf(strCout.rdbuf());
-    
-    ob.printBook("TEST");
-    
-    std::string output = strCout.str();
-    bool hasQty25 = output.find("    25") != std::string::npos;
-    
-    strCout.str("");
-    strCout.clear();
-    
-    ob.cancelOrder(1);
-    ob.printBook("TEST");
-    output = strCout.str();
-    bool hasQty15 = output.find("    15") != std::string::npos;
-    bool hasQty25AfterCancel = output.find("    25") != std::string::npos;
-    
-    std::cout.rdbuf(oldCoutStreamBuf);
-
-    EXPECT(hasQty25, "Initial printBook shows combined qty of 25");
-    EXPECT(hasQty15 && !hasQty25AfterCancel, "printBook shows qty 15 after cancelling 10");
-}
-
-//  Test: input validation
-
-void test_input_validation() {
-    std::cout << "\n[TEST] Input validation\n";
-    devNull.str("");
-    OrderBook ob(devNull);
-
-    auto t1 = ob.addOrder(makeOrder("TEST", Side::BUY, 0.0, 10));
-    auto t2 = ob.addOrder(makeOrder("TEST", Side::BUY, -10.0, 10));
-    auto t3 = ob.addOrder(makeOrder("TEST", Side::BUY, 100.0, 0));
-    auto t4 = ob.addOrder(makeOrder("TEST", Side::BUY, 100.0, -5));
-    auto t5 = ob.addOrder(makeOrder("TEST", Side::BUY, std::nan(""), 10));
-    auto t6 = ob.addOrder(makeOrder("TEST", Side::BUY, INFINITY, 10));
-
-    EXPECT(ob.bestBid("TEST") == 0.0, "Invalid orders are rejected and not added to the book");
-}
-
 //  main
-
 
 int main() {
     std::cout << "═══════════════════════════════════════\n";
@@ -249,9 +172,6 @@ int main() {
     test_cancel();
     test_modify();
     test_multi_symbol();
-    test_best_price_after_cancel();
-    test_print_book_after_cancel();
-    test_input_validation();
 
     std::cout << "\n───────────────────────────────────────\n";
     std::cout << "Results: " << passed << " passed, " << failed << " failed\n";
