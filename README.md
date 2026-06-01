@@ -20,12 +20,14 @@ A C++ implementation of a **price-time priority limit order book** with a contin
 ```
 OrderBook
 ├── books_["AAPL"]
-│   ├── bids: map<price, queue<Order>, greater<>>   ← best bid at begin()
-│   └── asks: map<price, queue<Order>>              ← best ask at begin()
+│   ├── bids: map<Price, queue<Order>, greater<>>   ← best bid at begin()
+│   └── asks: map<Price, queue<Order>>              ← best ask at begin()
 └── orderIndex_: map<id, OrderMeta>                 ← O(log N) cancel/modify
 ```
 
-**Why `map<price, queue<Order>>`?**
+**Why `map<Price, queue<Order>>`?**
+*Note: Prices are stored internally as `int64_t` representing integer cents (e.g., $150.25 -> `15025`). This eliminates floating-point precision issues and ensures deterministic matching, which is why real exchanges avoid floating-point prices.*
+
 
 | Operation      | Naïve (sorted vector) | This engine         |
 |----------------|-----------------------|---------------------|
@@ -130,7 +132,6 @@ order_book_engine/
 
 ## Known Limitations
 
-- Prices are currently stored as `double`, which can introduce floating-point precision issues.
 - Thread safety is not implemented; concurrent access requires external locking.
 - Market orders are not yet supported.
 

@@ -14,6 +14,16 @@ std::string sideToStr(Side s) {
     return s == Side::BUY ? "BUY" : "SELL";
 }
 
+Price parsePrice(const std::string& str) {
+    return static_cast<Price>(std::round(std::stod(str) * 100.0));
+}
+
+std::string priceToString(Price p) {
+    std::ostringstream oss;
+    oss << (p / 100) << "." << std::setfill('0') << std::setw(2) << (p % 100);
+    return oss.str();
+}
+
 
 //  Constructor
 
@@ -24,7 +34,7 @@ OrderBook::OrderBook(std::ostream& tradeLog)
 
 std::vector<Trade> OrderBook::addOrder(Order order) {
     // Input validation: reject invalid price or quantity
-    if (order.price <= 0.0 || std::isnan(order.price) || std::isinf(order.price) || order.quantity <= 0) {
+    if (order.price <= 0 || order.quantity <= 0) {
         return {};
     }
 
@@ -137,7 +147,7 @@ std::vector<Trade> OrderBook::matchOrders(const std::string& symbol) {
         // maker-price execution rule:
         // Trade executes at the resting (maker) order's price.
         // The ask arrived first if its timestamp is lower; otherwise bid did.
-        double tradePrice = (ask.timestamp < bid.timestamp) ? ask.price : bid.price;
+        Price tradePrice = (ask.timestamp < bid.timestamp) ? ask.price : bid.price;
 
         int matchedQty = std::min(bid.quantity, ask.quantity);
 
@@ -189,7 +199,7 @@ void OrderBook::printBook(const std::string& symbol) const {
     std::cout << "║  SELL side (asks)                    ║\n";
     std::cout << "║  Price         Qty                   ║\n";
     // Print asks from worst to best (highest to lowest) for visual clarity
-    std::vector<std::pair<double,int>> askLevels;
+    std::vector<std::pair<Price,int>> askLevels;
     for (auto& [price, q] : book.asks) {
         int total = 0;
         std::queue<Order> tmp = q;
@@ -203,8 +213,7 @@ void OrderBook::printBook(const std::string& symbol) const {
         if (total > 0) askLevels.push_back({price, total});
     }
     for (auto rit = askLevels.rbegin(); rit != askLevels.rend(); ++rit) {
-        std::cout << "║  " << std::fixed << std::setprecision(2)
-                  << std::setw(10) << rit->first
+        std::cout << "║  " << std::setw(10) << priceToString(rit->first)
                   << "  " << std::setw(6) << rit->second
                   << "                   ║\n";
     }
@@ -223,8 +232,7 @@ void OrderBook::printBook(const std::string& symbol) const {
             tmp.pop(); 
         }
         if (total > 0)
-            std::cout << "║  " << std::fixed << std::setprecision(2)
-                      << std::setw(10) << price
+            std::cout << "║  " << std::setw(10) << priceToString(price)
                       << "  " << std::setw(6) << total
                       << "                   ║\n";
     }
@@ -234,9 +242,9 @@ void OrderBook::printBook(const std::string& symbol) const {
 
 //  bestBid / bestAsk
 
-double OrderBook::bestBid(const std::string& symbol) const {
+Price OrderBook::bestBid(const std::string& symbol) const {
     auto it = books_.find(symbol);
-    if (it == books_.end() || it->second.bids.empty()) return 0.0;
+    if (it == books_.end() || it->second.bids.empty()) return 0;
     for (const auto& [price, q] : it->second.bids) {
         std::queue<Order> tmp = q;
         while (!tmp.empty()) {
@@ -247,12 +255,12 @@ double OrderBook::bestBid(const std::string& symbol) const {
             tmp.pop();
         }
     }
-    return 0.0;
+    return 0;
 }
 
-double OrderBook::bestAsk(const std::string& symbol) const {
+Price OrderBook::bestAsk(const std::string& symbol) const {
     auto it = books_.find(symbol);
-    if (it == books_.end() || it->second.asks.empty()) return 0.0;
+    if (it == books_.end() || it->second.asks.empty()) return 0;
     for (const auto& [price, q] : it->second.asks) {
         std::queue<Order> tmp = q;
         while (!tmp.empty()) {
@@ -263,7 +271,7 @@ double OrderBook::bestAsk(const std::string& symbol) const {
             tmp.pop();
         }
     }
-    return 0.0;
+    return 0;
 }
 
 //  loadFromFile
@@ -282,7 +290,7 @@ void OrderBook::loadFromFile(const std::string& filename,
     while (std::getline(file, line)) {
         if (line.empty()) continue;
         try {
-            double price = std::stod(line);
+            Price price = parsePrice(line);
             Order o;
             o.symbol   = symbol;
             o.side     = side;
@@ -302,7 +310,7 @@ void OrderBook::loadFromFile(const std::string& filename,
 
 void OrderBook::logTrade(const Trade& t) {
     tradeLog_ << "TRADE | " << t.symbol
-              << " | Price: " << std::fixed << std::setprecision(4) << t.price
+              << " | Price: " << priceToString(t.price)
               << " | Qty: " << t.quantity
               << " | BuyOrderId: "  << t.buyOrderId
               << " | SellOrderId: " << t.sellOrderId

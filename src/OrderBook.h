@@ -14,13 +14,18 @@ enum class Side { BUY, SELL };
 
 std::string sideToStr(Side s);
 
+//  Price type (fixed-point integer cents)
+using Price = int64_t;
+Price parsePrice(const std::string& str);
+std::string priceToString(Price p);
+
 //  Order struct
 
 struct Order {
     uint64_t    id;        // unique order id
     std::string symbol;
     Side        side;
-    double      price;
+    Price       price;
     int         quantity;
     uint64_t    timestamp; // insertion sequence (for FIFO at same price)
 };
@@ -30,7 +35,7 @@ struct Order {
 
 struct Trade {
     std::string symbol;
-    double      price;
+    Price       price;
     int         quantity;
     uint64_t    buyOrderId;
     uint64_t    sellOrderId;
@@ -67,9 +72,9 @@ public:
     // Print current state of the book to stdout
     void printBook(const std::string& symbol) const;
 
-    // Best bid / ask accessors (returns 0.0 if side is empty)
-    double bestBid(const std::string& symbol) const;
-    double bestAsk(const std::string& symbol) const;
+    // Best bid / ask accessors (returns 0 if side is empty)
+    Price bestBid(const std::string& symbol) const;
+    Price bestAsk(const std::string& symbol) const;
 
     // Load orders from a file (one price per line, random qty assigned)
     void loadFromFile(const std::string& filename,
@@ -79,8 +84,8 @@ public:
 
 private:
     // price → FIFO queue of orders at that price level
-    using BuyLevels  = std::map<double, std::queue<Order>, std::greater<double>>;
-    using SellLevels = std::map<double, std::queue<Order>>;
+    using BuyLevels  = std::map<Price, std::queue<Order>, std::greater<Price>>;
+    using SellLevels = std::map<Price, std::queue<Order>>;
 
     struct SymbolBook {
         BuyLevels  bids;
@@ -93,7 +98,7 @@ private:
     struct OrderMeta {
         std::string symbol;
         Side        side;
-        double      price;
+        Price       price;
         bool        active;
         int         remainingQty;
     };

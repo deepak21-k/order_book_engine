@@ -36,17 +36,17 @@ int main(int argc, char* argv[]) {
         std::cout << "[INFO] Usage: ./order_book_engine buy_orders.txt sell_orders.txt\n\n";
 
         // Demo orders – same scenario as original, but now uses proper engine
-        auto trades = ob.addOrder({0, TICKER, Side::BUY,  150.00, 10, 0});
-        trades      = ob.addOrder({0, TICKER, Side::BUY,  148.50, 15, 0});
-        trades      = ob.addOrder({0, TICKER, Side::BUY,  149.00,  8, 0});
-        trades      = ob.addOrder({0, TICKER, Side::SELL, 151.00, 12, 0});
-        trades      = ob.addOrder({0, TICKER, Side::SELL, 149.50,  5, 0});
+        auto trades = ob.addOrder({0, TICKER, Side::BUY,  15000, 10, 0});
+        trades      = ob.addOrder({0, TICKER, Side::BUY,  14850, 15, 0});
+        trades      = ob.addOrder({0, TICKER, Side::BUY,  14900,  8, 0});
+        trades      = ob.addOrder({0, TICKER, Side::SELL, 15100, 12, 0});
+        trades      = ob.addOrder({0, TICKER, Side::SELL, 14950,  5, 0});
 
         // This sell crosses the best bid (150.00 >= 149.50? yes) → triggers trade
         std::cout << "\n── Adding SELL @ 149.00 (crosses best bid @ 150.00) ──\n";
-        trades = ob.addOrder({0, TICKER, Side::SELL, 149.00, 6, 0});
+        trades = ob.addOrder({0, TICKER, Side::SELL, 14900, 6, 0});
         for (auto& t : trades) {
-            std::cout << "  ✔ TRADE: " << t.quantity << " @ " << t.price << "\n";
+            std::cout << "  ✔ TRADE: " << t.quantity << " @ " << priceToString(t.price) << "\n";
         }
 
         // Demonstrate cancel
@@ -64,12 +64,12 @@ int main(int argc, char* argv[]) {
     ob.printBook(TICKER);
 
     // ── 3. Print spread summary 
-    double bid = ob.bestBid(TICKER);
-    double ask = ob.bestAsk(TICKER);
-    std::cout << "\nBest Bid : " << std::fixed << std::setprecision(4) << bid << "\n";
-    std::cout << "Best Ask : " << std::fixed << std::setprecision(4) << ask << "\n";
+    Price bid = ob.bestBid(TICKER);
+    Price ask = ob.bestAsk(TICKER);
+    std::cout << "\nBest Bid : " << priceToString(bid) << "\n";
+    std::cout << "Best Ask : " << priceToString(ask) << "\n";
     if (bid > 0 && ask > 0)
-        std::cout << "Spread   : " << std::fixed << std::setprecision(4) << (ask - bid) << "\n";
+        std::cout << "Spread   : " << priceToString(ask - bid) << "\n";
 
     std::cout << "\n[INFO] Trade log written to order_output.txt\n";
     tradeFile.close();
